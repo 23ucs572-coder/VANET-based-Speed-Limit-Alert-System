@@ -38,7 +38,7 @@ scenario/
   corridor.edg.xml
   corridor.rou.xml
   corridor.sumocfg
-  corridor.net.xml          # generated
+  corridor.net.xml         
 src/
   build_network.py
   run_simulation.py
