@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+outputs/runtime/
+outputs/*.csv
+
+.venv/
+venv/
+env/
+
+.DS_Store
+Thumbs.db

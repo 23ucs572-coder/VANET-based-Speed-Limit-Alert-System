@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+    <vType id="cautious" accel="1.8" decel="4.5" sigma="0.3" length="5.0" minGap="2.5" maxSpeed="18.0" speedFactor="0.90"/>
+    <vType id="normal" accel="2.4" decel="4.5" sigma="0.5" length="5.0" minGap="2.5" maxSpeed="22.0" speedFactor="1.00"/>
+    <vType id="aggressive" accel="3.0" decel="5.0" sigma="0.8" length="5.0" minGap="2.0" maxSpeed="28.0" speedFactor="1.25"/>
+
+    <route id="main_corridor" edges="e0 e1 e2"/>
+
+    <vehicle id="veh0" type="aggressive" route="main_corridor" depart="0" departSpeed="max"/>
+    <vehicle id="veh1" type="normal" route="main_corridor" depart="3" departSpeed="max"/>
+    <vehicle id="veh2" type="aggressive" route="main_corridor" depart="6" departSpeed="max"/>
+    <vehicle id="veh3" type="cautious" route="main_corridor" depart="9" departSpeed="max"/>
+    <vehicle id="veh4" type="normal" route="main_corridor" depart="12" departSpeed="max"/>
+    <vehicle id="veh5" type="aggressive" route="main_corridor" depart="15" departSpeed="max"/>
+    <vehicle id="veh6" type="normal" route="main_corridor" depart="18" departSpeed="max"/>
+    <vehicle id="veh7" type="cautious" route="main_corridor" depart="21" departSpeed="max"/>
+</routes>
