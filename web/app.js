@@ -10,6 +10,16 @@ const messageBox = document.getElementById("messageBox");
 const alertsTableBody = document.getElementById("alertsTableBody");
 const runButton = document.getElementById("runButton");
 const refreshButton = document.getElementById("refreshButton");
+const replayCanvas = document.getElementById("replayCanvas");
+const replayStep = document.getElementById("replayStep");
+const replayVehicleCount = document.getElementById("replayVehicleCount");
+const playReplayButton = document.getElementById("playReplayButton");
+const pauseReplayButton = document.getElementById("pauseReplayButton");
+const replayContext = replayCanvas.getContext("2d");
+
+let replayData = null;
+let replayIndex = 0;
+let replayTimer = null;
 
 function getBackendUrl() {
   return backendUrlInput.value.trim().replace(/\/+$/, "");
@@ -70,6 +80,110 @@ function renderRows(rows) {
     .join("");
 }
 
+function statusColor(status) {
+  if (status === "danger") return "#ff7a21";
+  if (status === "speeding") return "#e74c3c";
+  if (status === "warned") return "#f1c40f";
+  return "#2ecc71";
+}
+
+function edgeColor(edgeId) {
+  if (edgeId === "e0") return "rgba(81, 120, 186, 0.18)";
+  if (edgeId === "e1") return "rgba(255, 214, 10, 0.28)";
+  return "rgba(72, 201, 176, 0.22)";
+}
+
+function drawReplayFrame() {
+  if (!replayData || !replayData.frames || replayData.frames.length === 0) {
+    replayContext.clearRect(0, 0, replayCanvas.width, replayCanvas.height);
+    replayContext.fillStyle = "#6b7280";
+    replayContext.font = '16px "Instrument Sans", sans-serif';
+    replayContext.fillText("No replay data loaded yet.", 20, 40);
+    replayStep.textContent = "Step --";
+    replayVehicleCount.textContent = "Vehicles --";
+    return;
+  }
+
+  const width = replayCanvas.width;
+  const height = replayCanvas.height;
+  const roadLeft = 40;
+  const roadRight = width - 40;
+  const roadY = 126;
+  const roadHeight = 26;
+  const roadLength = replayData.meta?.road_length_m ?? 1200;
+  const pxPerMeter = (roadRight - roadLeft) / roadLength;
+  const frame = replayData.frames[replayIndex] || replayData.frames[0];
+
+  replayContext.clearRect(0, 0, width, height);
+
+  replayData.road_segments.forEach((segment) => {
+    const x = roadLeft + segment.start_m * pxPerMeter;
+    const w = (segment.end_m - segment.start_m) * pxPerMeter;
+    replayContext.fillStyle = edgeColor(segment.edge_id);
+    replayContext.fillRect(x, roadY - 20, w, roadHeight + 40);
+    replayContext.fillStyle = "#374151";
+    replayContext.font = '15px "Space Grotesk", sans-serif';
+    replayContext.fillText(
+      `${segment.edge_id.toUpperCase()} • ${segment.limit_kmph} km/h`,
+      x + 8,
+      roadY - 28
+    );
+  });
+
+  replayContext.fillStyle = "#2f3640";
+  replayContext.fillRect(roadLeft, roadY, roadRight - roadLeft, roadHeight);
+
+  replayData.rsus.forEach((rsu) => {
+    const cx = roadLeft + rsu.x * pxPerMeter;
+    replayContext.fillStyle = "rgba(52, 152, 219, 0.18)";
+    replayContext.fillRect(
+      cx - rsu.range_m * pxPerMeter,
+      roadY - 10,
+      rsu.range_m * 2 * pxPerMeter,
+      roadHeight + 20
+    );
+    replayContext.beginPath();
+    replayContext.arc(cx, roadY - 18, 8, 0, Math.PI * 2);
+    replayContext.fillStyle = "#3498db";
+    replayContext.fill();
+    replayContext.fillStyle = "#1f2937";
+    replayContext.font = '13px "Instrument Sans", sans-serif';
+    replayContext.fillText(rsu.rsu_id, cx - 34, roadY - 34);
+  });
+
+  frame.vehicles.forEach((vehicle) => {
+    const x = roadLeft + vehicle.x * pxPerMeter;
+    const carWidth = 22;
+    const carHeight = 14;
+    replayContext.fillStyle = statusColor(vehicle.status);
+    replayContext.fillRect(x - carWidth / 2, roadY + 6, carWidth, carHeight);
+    replayContext.fillStyle = "#111827";
+    replayContext.font = '12px "Instrument Sans", sans-serif';
+    replayContext.fillText(vehicle.vehicle_id, x - 14, roadY - 8);
+  });
+
+  replayStep.textContent = `Step ${frame.step}`;
+  replayVehicleCount.textContent = `Vehicles ${frame.vehicles.length}`;
+}
+
+function stopReplay() {
+  if (replayTimer) {
+    clearInterval(replayTimer);
+    replayTimer = null;
+  }
+}
+
+function startReplay() {
+  if (!replayData || !replayData.frames || replayData.frames.length === 0) {
+    return;
+  }
+  stopReplay();
+  replayTimer = setInterval(() => {
+    replayIndex = (replayIndex + 1) % replayData.frames.length;
+    drawReplayFrame();
+  }, 160);
+}
+
 async function refreshHealth() {
   backendUrlLabel.textContent = getBackendUrl();
   try {
@@ -108,6 +222,20 @@ async function refreshRows() {
   } catch (error) {
     renderRows([]);
     setMessage(`Could not load alert rows: ${error.message}`, "error");
+  }
+}
+
+async function refreshTrace() {
+  try {
+    replayData = await fetchJson("/runs/latest/trace");
+    replayIndex = 0;
+    drawReplayFrame();
+    startReplay();
+  } catch (error) {
+    replayData = null;
+    stopReplay();
+    drawReplayFrame();
+    setMessage(`Could not load replay trace: ${error.message}`, "error");
   }
 }
 
@@ -159,12 +287,16 @@ async function refreshAll() {
   await refreshHealth();
   await refreshRunStatus();
   await refreshRows();
+  await refreshTrace();
 }
 
 form.addEventListener("submit", runSimulation);
 refreshButton.addEventListener("click", refreshAll);
 backendUrlInput.addEventListener("change", refreshAll);
+playReplayButton.addEventListener("click", startReplay);
+pauseReplayButton.addEventListener("click", stopReplay);
 
 refreshAll();
 setInterval(refreshRunStatus, 12000);
 setInterval(refreshRows, 12000);
+setInterval(refreshTrace, 15000);

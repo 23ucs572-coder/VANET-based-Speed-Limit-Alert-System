@@ -252,6 +252,51 @@ pre,
   background: #fff;
 }
 
+.replay-panel {
+  margin-bottom: 24px;
+}
+
+.replay-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.replay-stats,
+.replay-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.replay-viewport {
+  overflow: auto;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fff8ed, #fffdf9);
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+#replayCanvas {
+  width: 100%;
+  min-width: 960px;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(244, 185, 66, 0.08), rgba(31, 138, 130, 0.08)),
+    #fffefb;
+}
+
+.replay-note {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -134,6 +134,31 @@
       </section>
     </main>
 
+    <section class="panel replay-panel">
+      <div class="panel-head">
+        <h2>Simulation Replay</h2>
+        <p>A browser animation rebuilt from the latest cloud run trace.</p>
+      </div>
+
+      <div class="replay-topbar">
+        <div class="replay-stats">
+          <span class="badge badge-muted" id="replayStep">Step --</span>
+          <span class="badge badge-muted" id="replayVehicleCount">Vehicles --</span>
+        </div>
+        <div class="replay-actions">
+          <button id="playReplayButton" class="primary-button" type="button">Play Replay</button>
+          <button id="pauseReplayButton" class="secondary-button" type="button">Pause</button>
+        </div>
+      </div>
+
+      <div class="replay-viewport">
+        <canvas id="replayCanvas" width="1120" height="260"></canvas>
+      </div>
+      <p class="replay-note">
+        Green = compliant, Yellow = warned, Red = overspeeding, Orange = safety danger, Blue = RSU.
+      </p>
+    </section>
+
     <section class="panel table-panel">
       <div class="panel-head">
         <h2>Recent Alert Rows</h2>

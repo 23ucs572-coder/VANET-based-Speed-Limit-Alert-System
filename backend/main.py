@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,14 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from src.run_simulation import OUTPUT_DIR, RUNTIME_DIR, SimulationConfig, default_config, run_simulation
+from src.run_simulation import (
+    OUTPUT_DIR,
+    RUNTIME_DIR,
+    TRACE_FILE,
+    SimulationConfig,
+    default_config,
+    run_simulation,
+)
 
 
 app = FastAPI(
@@ -180,6 +188,13 @@ def get_latest_alert_rows(limit: int = 50) -> dict[str, object]:
         "total_rows": len(rows),
         "rows": rows[-safe_limit:],
     }
+
+
+@app.get("/runs/latest/trace")
+def get_latest_trace() -> dict[str, object]:
+    if not TRACE_FILE.exists():
+        raise HTTPException(status_code=404, detail="No replay trace found yet.")
+    return json.loads(TRACE_FILE.read_text(encoding="utf-8"))
 
 
 @app.post("/simulate", response_model=SimulationRunState)

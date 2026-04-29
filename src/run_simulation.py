@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import os
 import random
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "scenario"
 OUTPUT_DIR = ROOT / "outputs"
 RUNTIME_DIR = OUTPUT_DIR / "runtime"
+TRACE_FILE = OUTPUT_DIR / "latest_trace.json"
 SUMO_CONFIG = SCENARIO_DIR / "corridor.sumocfg"
 NETWORK_FILE = SCENARIO_DIR / "corridor.net.xml"
 
@@ -207,6 +209,57 @@ def get_rsus(config: SimulationConfig) -> list[RSU]:
 
 def write_event(writer: csv.DictWriter, row: dict[str, object]) -> None:
     writer.writerow(row)
+
+
+def write_trace_file(
+    config: SimulationConfig,
+    rsus: list[RSU],
+    trace_frames: list[dict[str, object]],
+    route_file: Path,
+) -> None:
+    payload = {
+        "meta": {
+            "road_length_m": ROAD_LENGTH,
+            "edge_length_m": EDGE_LENGTH,
+            "frame_count": len(trace_frames),
+            "route_file": str(route_file),
+        },
+        "config": {
+            "vehicle_count": config.vehicle_count,
+            "depart_gap_s": config.depart_gap_s,
+            "seed": config.seed,
+            "e0_limit_kmph": config.e0_limit_kmph,
+            "e1_limit_kmph": config.e1_limit_kmph,
+            "e2_limit_kmph": config.e2_limit_kmph,
+            "cautious_share": config.cautious_share,
+            "aggressive_share": config.aggressive_share,
+            "rsu_range_m": config.rsu_range_m,
+            "v2v_range_m": config.v2v_range_m,
+            "minimum_follow_distance_m": config.minimum_follow_distance_m,
+        },
+        "road_segments": [
+            {
+                "edge_id": edge_id,
+                "start_m": index * EDGE_LENGTH,
+                "end_m": (index + 1) * EDGE_LENGTH,
+                "limit_kmph": config.road_limits_kmph[edge_id],
+            }
+            for index, edge_id in enumerate(EDGE_SEQUENCE)
+        ],
+        "rsus": [
+            {
+                "rsu_id": rsu.rsu_id,
+                "x": rsu.x,
+                "range_m": rsu.broadcast_range_m,
+                "approach_edge": rsu.approach_edge,
+                "target_edge": rsu.target_edge,
+                "target_limit_kmph": round(kmph(rsu.target_limit_mps), 2),
+            }
+            for rsu in rsus
+        ],
+        "frames": trace_frames,
+    }
+    TRACE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def best_message_for_vehicle(
@@ -666,6 +719,7 @@ def run_simulation(config: SimulationConfig) -> None:
 
     memories: dict[str, VehicleMemory] = {}
     alert_file = OUTPUT_DIR / "alerts.csv"
+    trace_frames: list[dict[str, object]] = []
 
     with alert_file.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
@@ -980,6 +1034,28 @@ def run_simulation(config: SimulationConfig) -> None:
                         },
                     )
 
+            frame_vehicles: list[dict[str, object]] = []
+            for vehicle_id in vehicle_ids:
+                lane_id = traci.vehicle.getLaneID(vehicle_id)
+                frame_vehicles.append(
+                    {
+                        "vehicle_id": vehicle_id,
+                        "edge_id": traci.vehicle.getRoadID(vehicle_id),
+                        "x": round(traci.vehicle.getPosition(vehicle_id)[0], 2),
+                        "y": round(traci.vehicle.getPosition(vehicle_id)[1], 2),
+                        "speed_kmph": round(kmph(traci.vehicle.getSpeed(vehicle_id)), 2),
+                        "limit_kmph": round(kmph(traci.lane.getMaxSpeed(lane_id)), 2),
+                        "lane_position_m": round(traci.vehicle.getLanePosition(vehicle_id), 2),
+                        "status": memories[vehicle_id].status,
+                    }
+                )
+            trace_frames.append(
+                {
+                    "step": step,
+                    "vehicles": frame_vehicles,
+                }
+            )
+
             if config.use_gui:
                 for vehicle_id in vehicle_ids:
                     update_vehicle_visuals(
@@ -1013,7 +1089,9 @@ def run_simulation(config: SimulationConfig) -> None:
                     )
 
     traci.close()
+    write_trace_file(config, rsus, trace_frames, route_file)
     print(f"Simulation complete. Alert log written to: {alert_file}")
+    print(f"Replay trace written to: {TRACE_FILE}")
     print(f"Runtime route file: {route_file}")
 
 
