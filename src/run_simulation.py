@@ -20,6 +20,7 @@ SCENARIO_DIR = ROOT / "scenario"
 OUTPUT_DIR = ROOT / "outputs"
 RUNTIME_DIR = OUTPUT_DIR / "runtime"
 TRACE_FILE = OUTPUT_DIR / "latest_trace.json"
+TRACE_TMP_FILE = OUTPUT_DIR / "latest_trace.tmp.json"
 SUMO_CONFIG = SCENARIO_DIR / "corridor.sumocfg"
 NETWORK_FILE = SCENARIO_DIR / "corridor.net.xml"
 
@@ -211,11 +212,19 @@ def write_event(writer: csv.DictWriter, row: dict[str, object]) -> None:
     writer.writerow(row)
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    temp_path = TRACE_TMP_FILE if path == TRACE_FILE else path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(text, encoding="utf-8")
+    temp_path.replace(path)
+
+
 def write_trace_file(
     config: SimulationConfig,
     rsus: list[RSU],
     trace_frames: list[dict[str, object]],
     route_file: Path,
+    run_id: str | None = None,
+    run_status: str = "completed",
 ) -> None:
     payload = {
         "meta": {
@@ -223,6 +232,8 @@ def write_trace_file(
             "edge_length_m": EDGE_LENGTH,
             "frame_count": len(trace_frames),
             "route_file": str(route_file),
+            "run_id": run_id,
+            "run_status": run_status,
         },
         "config": {
             "vehicle_count": config.vehicle_count,
@@ -259,7 +270,7 @@ def write_trace_file(
         ],
         "frames": trace_frames,
     }
-    TRACE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_write_text(TRACE_FILE, json.dumps(payload, indent=2))
 
 
 def best_message_for_vehicle(
@@ -696,7 +707,7 @@ def build_sumo_command(
     return command
 
 
-def run_simulation(config: SimulationConfig) -> None:
+def run_simulation(config: SimulationConfig, run_id: str | None = None) -> None:
     try:
         import traci
     except ImportError as exc:
@@ -706,6 +717,8 @@ def run_simulation(config: SimulationConfig) -> None:
 
     ensure_network_exists()
     ensure_output_dirs()
+    TRACE_FILE.unlink(missing_ok=True)
+    TRACE_TMP_FILE.unlink(missing_ok=True)
 
     route_file = build_route_file(config)
     rsus = get_rsus(config)
@@ -1056,6 +1069,16 @@ def run_simulation(config: SimulationConfig) -> None:
                 }
             )
 
+            if step == 1 or step % 5 == 0 or not vehicle_ids:
+                write_trace_file(
+                    config,
+                    rsus,
+                    trace_frames,
+                    route_file,
+                    run_id=run_id,
+                    run_status="running",
+                )
+
             if config.use_gui:
                 for vehicle_id in vehicle_ids:
                     update_vehicle_visuals(
@@ -1089,7 +1112,14 @@ def run_simulation(config: SimulationConfig) -> None:
                     )
 
     traci.close()
-    write_trace_file(config, rsus, trace_frames, route_file)
+    write_trace_file(
+        config,
+        rsus,
+        trace_frames,
+        route_file,
+        run_id=run_id,
+        run_status="completed",
+    )
     print(f"Simulation complete. Alert log written to: {alert_file}")
     print(f"Replay trace written to: {TRACE_FILE}")
     print(f"Runtime route file: {route_file}")

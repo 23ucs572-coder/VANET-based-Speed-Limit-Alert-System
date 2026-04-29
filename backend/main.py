@@ -40,6 +40,7 @@ app.add_middleware(
 
 run_lock = threading.Lock()
 latest_run: dict[str, object] = {
+    "run_id": None,
     "status": "idle",
     "started_at": None,
     "finished_at": None,
@@ -67,6 +68,7 @@ class SimulationRequest(BaseModel):
 
 
 class SimulationRunState(BaseModel):
+    run_id: str | None
     status: Literal["idle", "running", "completed", "failed"]
     started_at: str | None
     finished_at: str | None
@@ -100,17 +102,19 @@ def _request_to_config(request: SimulationRequest) -> SimulationConfig:
     )
 
 
-def _run_in_background(config: SimulationConfig) -> None:
+def _run_in_background(config: SimulationConfig, run_id: str) -> None:
     if not run_lock.acquire(blocking=False):
         return
 
     try:
+        TRACE_FILE.unlink(missing_ok=True)
+        latest_run["run_id"] = run_id
         latest_run["status"] = "running"
         latest_run["started_at"] = _timestamp()
         latest_run["finished_at"] = None
         latest_run["config"] = config.__dict__.copy()
         latest_run["error"] = None
-        run_simulation(config)
+        run_simulation(config, run_id=run_id)
         latest_run["status"] = "completed"
         latest_run["finished_at"] = _timestamp()
     except Exception as exc:  # pragma: no cover - runtime safety
@@ -174,19 +178,23 @@ def get_latest_alerts() -> dict[str, object]:
 
 
 @app.get("/runs/latest/alerts/rows")
-def get_latest_alert_rows(limit: int = 50) -> dict[str, object]:
+def get_latest_alert_rows(limit: int | None = None) -> dict[str, object]:
     alert_file = Path(str(latest_run["alert_file"]))
     if not alert_file.exists():
         raise HTTPException(status_code=404, detail="No alerts.csv file found yet.")
 
-    safe_limit = max(1, min(limit, 200))
     with alert_file.open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
+    total_rows = len(rows)
+
+    if limit is not None:
+        safe_limit = max(1, min(limit, 5000))
+        rows = rows[-safe_limit:]
 
     return {
         "alert_file": str(alert_file),
-        "total_rows": len(rows),
-        "rows": rows[-safe_limit:],
+        "total_rows": total_rows,
+        "rows": rows,
     }
 
 
@@ -203,9 +211,11 @@ def simulate(request: SimulationRequest, background_tasks: BackgroundTasks) -> S
         raise HTTPException(status_code=409, detail="A simulation is already running.")
 
     config = _request_to_config(request)
-    background_tasks.add_task(_run_in_background, config)
+    run_id = _timestamp()
+    background_tasks.add_task(_run_in_background, config, run_id)
 
     queued_state = latest_run.copy()
+    queued_state["run_id"] = run_id
     queued_state["status"] = "running"
     queued_state["started_at"] = _timestamp()
     queued_state["finished_at"] = None

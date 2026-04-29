@@ -20,7 +20,10 @@ const replayContext = replayCanvas.getContext("2d");
 let replayData = null;
 let replayIndex = 0;
 let replayTimer = null;
-let replaySignature = null;
+let replayRunId = null;
+let replayFrameCount = 0;
+let latestRunStatus = "idle";
+let liveReplayPoller = null;
 
 function getBackendUrl() {
   return backendUrlInput.value.trim().replace(/\/+$/, "");
@@ -35,12 +38,14 @@ function setMessage(text, type = "info") {
 }
 
 function setRunStatus(status) {
+  latestRunStatus = status || "Unknown";
   runStatusBadge.textContent = status || "Unknown";
   runStatusBadge.className = "badge";
   if (status === "running") runStatusBadge.classList.add("running");
   if (status === "completed") runStatusBadge.classList.add("completed");
   if (status === "failed") runStatusBadge.classList.add("failed");
   if (status === "idle") runStatusBadge.classList.add("ok");
+  playReplayButton.disabled = status === "running";
 }
 
 async function fetchJson(path, options = {}) {
@@ -174,12 +179,12 @@ function stopReplay() {
   }
 }
 
-function startReplay() {
+function startReplay({ restartIfComplete = true } = {}) {
   if (!replayData || !replayData.frames || replayData.frames.length === 0) {
     return;
   }
 
-  if (replayIndex >= replayData.frames.length - 1) {
+  if (restartIfComplete && replayIndex >= replayData.frames.length - 1) {
     replayIndex = 0;
     drawReplayFrame();
   }
@@ -196,17 +201,23 @@ function startReplay() {
   }, 160);
 }
 
-function getReplaySignature(trace) {
-  if (!trace || !trace.frames || trace.frames.length === 0) {
-    return null;
+function stopLiveReplayPolling() {
+  if (liveReplayPoller) {
+    clearInterval(liveReplayPoller);
+    liveReplayPoller = null;
   }
+}
 
-  const lastFrame = trace.frames[trace.frames.length - 1];
-  return [
-    trace.meta?.frame_count ?? trace.frames.length,
-    lastFrame?.step ?? trace.frames.length,
-    trace.config?.vehicle_count ?? "na",
-  ].join(":");
+function startLiveReplayPolling() {
+  stopLiveReplayPolling();
+  liveReplayPoller = setInterval(async () => {
+    await refreshRunStatus();
+    await refreshRows();
+    await refreshTrace({ autoplay: true });
+    if (latestRunStatus !== "running") {
+      stopLiveReplayPolling();
+    }
+  }, 1200);
 }
 
 async function refreshHealth() {
@@ -242,7 +253,7 @@ async function refreshRunStatus() {
 
 async function refreshRows() {
   try {
-    const data = await fetchJson("/runs/latest/alerts/rows?limit=30");
+    const data = await fetchJson("/runs/latest/alerts/rows");
     renderRows(data.rows);
   } catch (error) {
     renderRows([]);
@@ -253,26 +264,38 @@ async function refreshRows() {
 async function refreshTrace({ autoplay = false } = {}) {
   try {
     const trace = await fetchJson("/runs/latest/trace");
-    const nextSignature = getReplaySignature(trace);
-    const isNewTrace = nextSignature !== replaySignature;
+    const nextRunId = trace.meta?.run_id ?? null;
+    const nextFrameCount = trace.meta?.frame_count ?? trace.frames?.length ?? 0;
+    const isDifferentRun = nextRunId !== replayRunId;
+    const hasNewFrames = isDifferentRun || nextFrameCount > replayFrameCount;
 
     replayData = trace;
-    replaySignature = nextSignature;
+    replayRunId = nextRunId;
+    replayFrameCount = nextFrameCount;
 
-    if (isNewTrace) {
+    if (isDifferentRun) {
       replayIndex = 0;
     }
 
+    if (replayIndex >= replayData.frames.length) {
+      replayIndex = Math.max(0, replayData.frames.length - 1);
+    }
+
     drawReplayFrame();
 
-    if (autoplay && isNewTrace) {
-      startReplay();
+    if (autoplay && hasNewFrames) {
+      startReplay({ restartIfComplete: false });
     }
   } catch (error) {
     replayData = null;
-    replaySignature = null;
+    replayRunId = null;
+    replayFrameCount = 0;
     stopReplay();
     drawReplayFrame();
+    if (latestRunStatus === "running" && String(error.message).includes("404")) {
+      setMessage("Simulation is running. Waiting for the first replay frames...");
+      return;
+    }
     setMessage(`Could not load replay trace: ${error.message}`, "error");
   }
 }
@@ -301,6 +324,13 @@ async function runSimulation(event) {
   runButton.disabled = true;
   runButton.textContent = "Submitting...";
   backendUrlLabel.textContent = getBackendUrl();
+  stopReplay();
+  stopLiveReplayPolling();
+  replayData = null;
+  replayIndex = 0;
+  replayRunId = null;
+  replayFrameCount = 0;
+  drawReplayFrame();
 
   try {
     const payload = buildPayload();
@@ -311,8 +341,11 @@ async function runSimulation(event) {
     });
     setRunStatus(result.status);
     configPreview.textContent = JSON.stringify(result.config, null, 2);
-    setMessage("Simulation request accepted. Refreshing status...");
-    await refreshAll();
+    setMessage("Simulation started. Live replay will begin automatically as frames arrive.");
+    await refreshRunStatus();
+    await refreshRows();
+    await refreshTrace({ autoplay: true });
+    startLiveReplayPolling();
   } catch (error) {
     setMessage(`Simulation request failed: ${error.message}`, "error");
   } finally {
@@ -331,7 +364,7 @@ async function refreshAll() {
 form.addEventListener("submit", runSimulation);
 refreshButton.addEventListener("click", refreshAll);
 backendUrlInput.addEventListener("change", refreshAll);
-playReplayButton.addEventListener("click", startReplay);
+playReplayButton.addEventListener("click", () => startReplay({ restartIfComplete: true }));
 pauseReplayButton.addEventListener("click", stopReplay);
 
 refreshAll();
