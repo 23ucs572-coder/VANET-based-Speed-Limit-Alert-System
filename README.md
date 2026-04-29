@@ -230,6 +230,57 @@ Important:
 - the current Tkinter launcher and SUMO GUI remain your local desktop version
 - the backend is the starting point for a future frontend website
 
+## Deploy The Backend Online
+
+The easiest deploy path for the current repo is:
+
+- `GitHub` for source control
+- `Render` or `Railway` for the FastAPI + SUMO backend
+- `Netlify` later for a separate frontend site
+
+This repo now includes:
+
+- [Dockerfile](D:\Vansec\Dockerfile)
+- [render.yaml](D:\Vansec\render.yaml)
+
+These let a cloud host install SUMO and run the backend without using your local CPU.
+
+### Render
+
+1. Create an account on [Render](https://render.com/)
+2. Click `New` -> `Blueprint`
+3. Connect your GitHub account
+4. Choose your repo:
+   `23ucs572-coder/VANET-based-Speed-Limit-Alert-System`
+5. Render should detect [render.yaml](D:\Vansec\render.yaml)
+6. Confirm the deploy
+
+After deployment, Render will give you a public URL like:
+
+```text
+https://vanet-sumo-backend.onrender.com
+```
+
+Render rebuilds and redeploys automatically whenever you push to your GitHub `main` branch.
+
+### Railway
+
+If you prefer Railway:
+
+1. Create an account on [Railway](https://railway.com/)
+2. Choose `New Project`
+3. Select `Deploy from GitHub repo`
+4. Pick your repo
+5. Railway will build from the included [Dockerfile](D:\Vansec\Dockerfile)
+6. Add a public domain to the service
+
+### Netlify
+
+Netlify is best used for the future frontend, not for the SUMO backend itself.
+
+Right now, this repo does not yet contain a browser frontend, so there is nothing meaningful to deploy to Netlify yet.
+The present public link should come from Render or Railway first.
+
 ## Suggested Full-Project Roadmap
 
 If you want to turn this into a strong university or portfolio project, build it in phases:

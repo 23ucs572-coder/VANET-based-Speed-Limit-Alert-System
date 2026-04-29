@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.run_simulation import OUTPUT_DIR, RUNTIME_DIR, SimulationConfig, default_config, run_simulation
@@ -18,6 +19,14 @@ app = FastAPI(
         "Starter API for running the VANET-based speed limit alert simulation "
         "without the desktop launcher."
     ),
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 run_lock = threading.Lock()
