@@ -161,8 +161,8 @@
 
     <section class="panel table-panel">
       <div class="panel-head">
-        <h2>Recent Alert Rows</h2>
-        <p>The latest alert events pulled from <code>alerts.csv</code> on the live backend.</p>
+        <h2>Simulation Timeline</h2>
+        <p>The full per-step vehicle history rebuilt from the live replay trace.</p>
       </div>
 
       <div class="table-wrap">
@@ -171,20 +171,20 @@
             <tr>
               <th>Step</th>
               <th>Vehicle</th>
-              <th>Event</th>
-              <th>Source</th>
-              <th>Current Edge</th>
-              <th>Target Edge</th>
+              <th>Status</th>
+              <th>Edge</th>
+              <th>X Position</th>
+              <th>Lane Position</th>
               <th>Speed</th>
               <th>Limit</th>
-              <th>Distance</th>
-              <th>Hops</th>
-              <th>Details</th>
+              <th>Distance Left</th>
+              <th>Y Position</th>
+              <th>Notes</th>
             </tr>
           </thead>
           <tbody id="alertsTableBody">
             <tr>
-              <td colspan="11" class="empty-state">No alert rows loaded yet.</td>
+              <td colspan="11" class="empty-state">No simulation timeline loaded yet.</td>
             </tr>
           </tbody>
         </table>

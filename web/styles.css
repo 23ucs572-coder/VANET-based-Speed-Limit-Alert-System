@@ -247,6 +247,9 @@ pre,
 
 .table-wrap {
   overflow: auto;
+  max-height: calc(21 * 44px);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border-radius: 18px;
   border: 1px solid var(--line);
   background: #fff;
@@ -316,8 +319,12 @@ td {
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   font-family: "Space Grotesk", sans-serif;
   color: #7c2d12;
+  background: linear-gradient(180deg, #fff3e8, #fffbf7);
 }
 
 tbody tr:nth-child(even) {

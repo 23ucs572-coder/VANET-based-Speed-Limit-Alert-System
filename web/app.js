@@ -57,11 +57,34 @@ async function fetchJson(path, options = {}) {
   return response.json();
 }
 
-function renderRows(rows) {
-  if (!rows || rows.length === 0) {
+function renderTimelineRows(trace) {
+  const rows = [];
+
+  if (trace && trace.frames) {
+    trace.frames.forEach((frame) => {
+      frame.vehicles.forEach((vehicle) => {
+        const roadLength = trace.meta?.road_length_m ?? 1200;
+        rows.push({
+          step: frame.step,
+          vehicle_id: vehicle.vehicle_id,
+          status: vehicle.status ?? "",
+          edge_id: vehicle.edge_id ?? "",
+          x: vehicle.x ?? "",
+          lane_position_m: vehicle.lane_position_m ?? "",
+          speed_kmph: vehicle.speed_kmph ?? "",
+          limit_kmph: vehicle.limit_kmph ?? "",
+          distance_left_m:
+            typeof vehicle.x === "number" ? Math.max(0, roadLength - vehicle.x).toFixed(2) : "",
+          y: vehicle.y ?? "",
+        });
+      });
+    });
+  }
+
+  if (rows.length === 0) {
     alertsTableBody.innerHTML = `
       <tr>
-        <td colspan="11" class="empty-state">No alert rows available yet.</td>
+        <td colspan="11" class="empty-state">No simulation timeline loaded yet.</td>
       </tr>
     `;
     return;
@@ -72,15 +95,15 @@ function renderRows(rows) {
       <tr>
         <td>${row.step ?? ""}</td>
         <td>${row.vehicle_id ?? ""}</td>
-        <td>${row.event_type ?? ""}</td>
-        <td>${row.source ?? ""}</td>
-        <td>${row.current_edge ?? ""}</td>
-        <td>${row.target_edge ?? ""}</td>
-        <td>${row.vehicle_speed_kmph ?? ""}</td>
+        <td>${row.status ?? ""}</td>
+        <td>${row.edge_id ?? ""}</td>
+        <td>${row.x ?? ""}</td>
+        <td>${row.lane_position_m ?? ""}</td>
+        <td>${row.speed_kmph ?? ""}</td>
         <td>${row.limit_kmph ?? ""}</td>
-        <td>${row.distance_m ?? ""}</td>
-        <td>${row.hops ?? ""}</td>
-        <td>${row.details ?? ""}</td>
+        <td>${row.distance_left_m ?? ""}</td>
+        <td>${row.y ?? ""}</td>
+        <td>trace_frame</td>
       </tr>
     `)
     .join("");
@@ -251,14 +274,8 @@ async function refreshRunStatus() {
   }
 }
 
-async function refreshRows() {
-  try {
-    const data = await fetchJson("/runs/latest/alerts/rows");
-    renderRows(data.rows);
-  } catch (error) {
-    renderRows([]);
-    setMessage(`Could not load alert rows: ${error.message}`, "error");
-  }
+function refreshRows() {
+  renderTimelineRows(replayData);
 }
 
 async function refreshTrace({ autoplay = false } = {}) {
@@ -282,6 +299,7 @@ async function refreshTrace({ autoplay = false } = {}) {
     }
 
     drawReplayFrame();
+    refreshRows();
 
     if (autoplay && hasNewFrames) {
       startReplay({ restartIfComplete: false });
@@ -292,6 +310,7 @@ async function refreshTrace({ autoplay = false } = {}) {
     replayFrameCount = 0;
     stopReplay();
     drawReplayFrame();
+    refreshRows();
     if (latestRunStatus === "running" && String(error.message).includes("404")) {
       setMessage("Simulation is running. Waiting for the first replay frames...");
       return;
@@ -343,7 +362,7 @@ async function runSimulation(event) {
     configPreview.textContent = JSON.stringify(result.config, null, 2);
     setMessage("Simulation started. Live replay will begin automatically as frames arrive.");
     await refreshRunStatus();
-    await refreshRows();
+    refreshRows();
     await refreshTrace({ autoplay: true });
     startLiveReplayPolling();
   } catch (error) {
@@ -357,7 +376,7 @@ async function runSimulation(event) {
 async function refreshAll() {
   await refreshHealth();
   await refreshRunStatus();
-  await refreshRows();
+  refreshRows();
   await refreshTrace();
 }
 
@@ -369,5 +388,4 @@ pauseReplayButton.addEventListener("click", stopReplay);
 
 refreshAll();
 setInterval(refreshRunStatus, 12000);
-setInterval(refreshRows, 12000);
 setInterval(refreshTrace, 15000);
