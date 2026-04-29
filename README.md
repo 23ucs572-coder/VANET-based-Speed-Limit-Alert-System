@@ -1,219 +1,128 @@
 # VANET-Based Speed Limit Alert System
 
-This starter project shows how to build a VANET-based speed limit alert system with:
+A SUMO-based VANET simulation with:
 
-- `SUMO` for traffic simulation
-- `Python + TraCI` for runtime control
-- `RSU -> Vehicle` and `Vehicle -> Vehicle` message propagation
-- speed limit warning logs you can use for a report or thesis demo
+- `Python + TraCI` simulation control
+- `FastAPI` backend for cloud runs
+- static browser frontend for control, replay, and timeline viewing
 
-The project is intentionally small, readable, and easy to extend from scratch.
+## What It Does
 
-## What The System Does
+The project simulates vehicles moving through a three-zone road corridor:
 
-Vehicles drive through a corridor with changing speed limits:
+- `e0`: `60 km/h`
+- `e1`: `30 km/h`
+- `e2`: `50 km/h`
 
-- `e0`: 60 km/h
-- `e1`: 30 km/h
-- `e2`: 50 km/h
+RSUs broadcast speed-limit warnings near zone transitions, and vehicles can forward recent messages to nearby vehicles. The system logs alerts, writes a replay trace, and shows the run in the browser.
 
-Road Side Units (RSUs) broadcast upcoming speed-limit messages near zone changes.
-Vehicles that receive a message can rebroadcast it to nearby vehicles, mimicking a
-simple VANET dissemination model.
+## Main Features
 
-The Python controller checks:
-
-- the vehicle's current speed
-- the lane's current legal speed
-- whether a lower speed zone is approaching
-- whether the alert came from an RSU or another vehicle
-
-Alerts are written to `outputs/alerts.csv`.
+- configurable vehicle count, departure gap, and driver mix
+- RSU and V2V warning propagation
+- non-GUI cloud simulation runs
+- live run status from the backend
+- browser replay animation
+- full per-step simulation timeline table
+- replay speed controls
 
 ## Project Structure
 
 ```text
-scenario/
-  corridor.nod.xml
-  corridor.edg.xml
-  corridor.rou.xml
-  corridor.sumocfg
-  corridor.net.xml         
-src/
-  build_network.py
-  run_simulation.py
-docs/
-  architecture.md
-  sources.md
-requirements.txt
-README.md
 backend/
   main.py
-  requirements.txt
+docs/
+  architecture.md
+  gui_guide.md
+  sources.md
+outputs/
+  alerts.csv
+  latest_trace.json
+  runtime/
+scenario/
+src/
+  build_network.py
+  launch_app.py
+  run_simulation.py
 web/
   index.html
   styles.css
   app.js
+Dockerfile
+render.yaml
+README.md
+requirements.txt
 ```
 
-## Prerequisites
+## Local Setup
 
-1. Install SUMO from the official site.
-2. Make sure `sumo` / `sumo-gui` / `netconvert` are on your PATH.
-3. Set `SUMO_HOME` if you want to use the tools bundled with SUMO.
-4. Install Python dependencies:
+### Prerequisites
+
+Install:
+
+1. Python `3.11+`
+2. SUMO
+3. Python packages:
 
 ```powershell
 pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
-## Quick Start
-
-1. Build the SUMO network:
+### Build the network
 
 ```powershell
 python src/build_network.py
 ```
 
-2. Run the simulation:
+### Run the simulation
+
+Non-GUI:
 
 ```powershell
 python src/run_simulation.py
 ```
 
-3. Run with the GUI:
+GUI:
 
 ```powershell
 python src/run_simulation.py --gui --delay-ms 600
 ```
 
-4. Check the generated alert log:
-
-```text
-outputs/alerts.csv
-```
-
-## Interactive Launcher
-
-The easiest way to use this project now is the launcher window:
+### Desktop launcher
 
 ```powershell
 python src/launch_app.py
 ```
 
-From the launcher, you can choose at runtime:
+## Local Backend
 
-- number of vehicles
-- departure gap between vehicles
-- speed limits for `e0`, `e1`, and `e2`
-- cautious vs aggressive driver mix
-- RSU and V2V communication ranges
-- GUI animation delay
-
-After you click `Launch SUMO Simulation`, the project will:
-
-1. generate a fresh route file from your chosen parameters
-2. start SUMO with the GUI
-3. apply your road speed limits dynamically
-4. show the updated overlays, labels, colors, and warnings
-
-## Better GUI View
-
-For a slower, easier-to-watch animation:
-
-```powershell
-python src/run_simulation.py --gui --delay-ms 600
-```
-
-The enhanced GUI includes:
-
-- RSU markers and coverage areas
-- colored road zones for 60 / 30 / 50 km/h segments
-- red vehicles when speeding
-- yellow vehicles when warned about an upcoming lower limit
-- live camera tracking of the lead vehicle
-- dynamic text labels near vehicles
-
-Extra SUMO GUI tips are in:
-
-- [docs/gui_guide.md](D:\Vansec\docs\gui_guide.md)
-
-## How It Works
-
-1. `build_network.py` calls `netconvert` on the node and edge files.
-2. `run_simulation.py` starts SUMO through TraCI.
-3. RSUs broadcast speed-limit messages to vehicles in range.
-4. Vehicles rebroadcast recent messages to neighbors.
-5. The controller logs:
-   - message deliveries
-   - current overspeed warnings
-   - upcoming speed-zone warnings
-
-## Put It On GitHub
-
-1. Create a new empty repository on GitHub.
-2. Open PowerShell in `D:\Vansec`.
-3. Run these commands one by one:
-
-```powershell
-git init
-git add .
-git commit -m "Initial VANET SUMO project"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPO.git
-git push -u origin main
-```
-
-After that, your project is on GitHub and future changes can be pushed with:
-
-```powershell
-git add .
-git commit -m "Describe your change"
-git push
-```
-
-## SUMO Backend Starter
-
-The project now also includes a small FastAPI backend starter:
-
-- [backend/main.py](D:\Vansec\backend\main.py)
-- [backend/requirements.txt](D:\Vansec\backend\requirements.txt)
-
-This backend is the first step toward a web-deployable version.
-
-### Install backend packages
-
-```powershell
-python -m pip install -r D:\Vansec\backend\requirements.txt
-```
-
-### Start the backend locally
+Start the API locally:
 
 ```powershell
 python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### Open it in your browser
+Useful URLs:
 
-- API home: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-- API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-### What the backend can do now
+## API
 
-- `/health`
-  Checks that the backend is alive
-- `/config/defaults`
-  Returns default simulation settings
-- `/runs/latest`
-  Shows the latest run status
-- `/simulate`
-  Starts one non-GUI simulation run in the background
+- `GET /health`
+- `GET /config/defaults`
+- `GET /runs/latest`
+- `GET /runs/latest/alerts`
+- `GET /runs/latest/alerts/rows`
+- `GET /runs/latest/trace`
+- `POST /simulate`
 
-Example JSON body for `/simulate`:
+Example `/simulate` request:
 
 ```json
 {
-  "vehicle_count": 12,
+  "vehicle_count": 8,
   "depart_gap_s": 5,
   "seed": 42,
   "e0_limit_kmph": 60,
@@ -229,118 +138,117 @@ Example JSON body for `/simulate`:
 }
 ```
 
-Important:
-- for internet deployment later, the backend should run `use_gui = false`
-- the current Tkinter launcher and SUMO GUI remain your local desktop version
-- the backend is the starting point for a future frontend website
+## Frontend
 
-## Deploy The Backend Online
+The frontend in [web](D:/Vansec/web) includes:
 
-The easiest deploy path for the current repo is:
+- `Simulation Controls`
+- `Run Status`
+- `Simulation Replay`
+- `Simulation Timeline`
 
-- `GitHub` for source control
-- `Render` or `Railway` for the FastAPI + SUMO backend
-- `Netlify` later for a separate frontend site
+Current behavior:
 
-This repo now includes:
+- `Run Simulation` starts a backend run
+- replay updates from the latest trace
+- `Play Simulation Demo` replays the finished run
+- timeline shows per-step vehicle history
 
-- [Dockerfile](D:\Vansec\Dockerfile)
-- [render.yaml](D:\Vansec\render.yaml)
+## Output Files
 
-These let a cloud host install SUMO and run the backend without using your local CPU.
+- [outputs/alerts.csv](D:/Vansec/outputs/alerts.csv)
+- [outputs/latest_trace.json](D:/Vansec/outputs/latest_trace.json)
+- [outputs/runtime](D:/Vansec/outputs/runtime)
 
-### Render
+## Render Backend Deployment
 
-1. Create an account on [Render](https://render.com/)
-2. Click `New` -> `Blueprint`
-3. Connect your GitHub account
-4. Choose your repo:
-   `23ucs572-coder/VANET-based-Speed-Limit-Alert-System`
-5. Render should detect [render.yaml](D:\Vansec\render.yaml)
-6. Confirm the deploy
+This repo already includes:
 
-After deployment, Render will give you a public URL like:
+- [Dockerfile](D:/Vansec/Dockerfile)
+- [render.yaml](D:/Vansec/render.yaml)
+
+Render service summary:
+
+```yaml
+services:
+  - type: web
+    name: vanet-sumo-backend
+    runtime: docker
+    plan: free
+    autoDeploy: true
+```
+
+Expected backend URL:
 
 ```text
 https://vanet-sumo-backend.onrender.com
 ```
 
-Render rebuilds and redeploys automatically whenever you push to your GitHub `main` branch.
+### Deploy steps
 
-### Railway
+1. Push repo to GitHub
+2. Open Render
+3. Create `New -> Blueprint`
+4. Connect the repo
+5. Render detects `render.yaml`
+6. Deploy
 
-If you prefer Railway:
+### After backend changes
 
-1. Create an account on [Railway](https://railway.com/)
-2. Choose `New Project`
-3. Select `Deploy from GitHub repo`
-4. Pick your repo
-5. Railway will build from the included [Dockerfile](D:\Vansec\Dockerfile)
-6. Add a public domain to the service
+If you update:
 
-### Netlify
+- [backend/main.py](D:/Vansec/backend/main.py)
+- [src/run_simulation.py](D:/Vansec/src/run_simulation.py)
+- [Dockerfile](D:/Vansec/Dockerfile)
 
-Netlify is used for the browser frontend in the [web](D:\Vansec\web) folder.
+push to GitHub:
 
-This repo now includes:
-
-- [web/index.html](D:\Vansec\web\index.html)
-- [web/styles.css](D:\Vansec\web\styles.css)
-- [web/app.js](D:\Vansec\web\app.js)
-- [netlify.toml](D:\Vansec\netlify.toml)
-
-To deploy it:
-
-1. Create an account on [Netlify](https://www.netlify.com/)
-2. Choose `Add new site` -> `Import an existing project`
-3. Connect GitHub
-4. Pick your repo
-5. Netlify should detect [netlify.toml](D:\Vansec\netlify.toml)
-6. Deploy the site
-
-The frontend is already configured to talk to:
-
-```text
-https://vanet-sumo-backend.onrender.com
+```powershell
+git add .
+git commit -m "Update backend"
+git push
 ```
 
-So after deploy, users can open the Netlify link, change parameters, run a simulation, and view the latest alert rows through the browser.
+Render will redeploy automatically.
 
-## Suggested Full-Project Roadmap
+Verify with:
 
-If you want to turn this into a strong university or portfolio project, build it in phases:
+- [https://vanet-sumo-backend.onrender.com/health](https://vanet-sumo-backend.onrender.com/health)
+- [https://vanet-sumo-backend.onrender.com/docs](https://vanet-sumo-backend.onrender.com/docs)
+- [https://vanet-sumo-backend.onrender.com/runs/latest](https://vanet-sumo-backend.onrender.com/runs/latest)
 
-1. Baseline:
-   Run the current corridor demo and validate that alerts appear correctly.
-2. Better VANET model:
-   Add packet loss, delay, channel congestion, or rebroadcast suppression.
-3. Larger road network:
-   Import a real map from OpenStreetMap into SUMO.
-4. Stronger analytics:
-   Measure alert latency, warning success rate, overspeed reduction, and message overhead.
-5. UI/reporting:
-   Plot speed profiles, alert counts, and dissemination coverage.
-6. Research comparison:
-   Compare `RSU only`, `RSU + V2V`, and `no alert` scenarios.
+## Frontend Deployment
 
-## Good Next Extensions
+The frontend is static and can be deployed on:
 
-- add driver classes: cautious, normal, aggressive
-- add dynamic speed limits for weather or school zones
-- integrate confidence scoring for received messages
-- add malicious or stale-message detection
-- export charts from the CSV logs
-- couple SUMO with a dedicated network simulator later if needed
+- Vercel
+- Netlify
+- Render Static Sites
 
-## Notes
+Use:
 
-- This project uses a lightweight VANET logic inside Python rather than a full wireless PHY/MAC simulator.
-- That makes it a good starting point for learning, demos, and early research prototypes.
-- For higher-fidelity networking, you can later couple SUMO with ns-3 or OMNeT++.
+- root directory: `web`
+- no build step required
 
-## Sources
+After frontend changes:
 
-See:
+```powershell
+git add web/index.html web/styles.css web/app.js
+git commit -m "Update frontend"
+git push
+```
 
-- [docs/architecture.md](D:\Vansec\docs\architecture.md)
-- [docs/sources.md](D:\Vansec\docs\sources.md)
+## Demo Flow
+
+1. Open the frontend
+2. Check backend connection
+3. Change parameters
+4. Click `Run Simulation`
+5. Watch replay and timeline update
+6. Replay the finished run with speed controls
+
+## Docs
+
+- [docs/architecture.md](D:/Vansec/docs/architecture.md)
+- [docs/gui_guide.md](D:/Vansec/docs/gui_guide.md)
+- [docs/sources.md](D:/Vansec/docs/sources.md)
