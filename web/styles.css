@@ -247,7 +247,7 @@ pre,
 
 .table-wrap {
   overflow: auto;
-  max-height: calc(21 * 44px);
+  max-height: calc(16 * 44px);
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   border-radius: 18px;
