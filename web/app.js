@@ -394,20 +394,26 @@ async function refreshTrace({ autoplay = false } = {}) {
   }
 }
 
+function getInt(formData, name, fallback) {
+  const raw = formData.get(name);
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function buildPayload() {
   const formData = new FormData(form);
   return {
-    vehicle_count: Number(formData.get("vehicle_count")),
-    depart_gap_s: Number(formData.get("depart_gap_s")),
-    seed: Number(formData.get("seed")),
-    e0_limit_kmph: Number(formData.get("e0_limit_kmph")),
-    e1_limit_kmph: Number(formData.get("e1_limit_kmph")),
-    e2_limit_kmph: Number(formData.get("e2_limit_kmph")),
-    cautious_share: Number(formData.get("cautious_share")),
-    aggressive_share: Number(formData.get("aggressive_share")),
-    rsu_range_m: Number(formData.get("rsu_range_m")),
-    v2v_range_m: Number(formData.get("v2v_range_m")),
-    minimum_follow_distance_m: Number(formData.get("minimum_follow_distance_m")),
+    vehicle_count: getInt(formData, "vehicle_count", 8),
+    depart_gap_s: getInt(formData, "depart_gap_s", 5),
+    seed: getInt(formData, "seed", 42),
+    e0_limit_kmph: getInt(formData, "e0_limit_kmph", 60),
+    e1_limit_kmph: getInt(formData, "e1_limit_kmph", 30),
+    e2_limit_kmph: getInt(formData, "e2_limit_kmph", 50),
+    cautious_share: getInt(formData, "cautious_share", 25),
+    aggressive_share: getInt(formData, "aggressive_share", 35),
+    rsu_range_m: getInt(formData, "rsu_range_m", 140),
+    v2v_range_m: getInt(formData, "v2v_range_m", 120),
+    minimum_follow_distance_m: getInt(formData, "minimum_follow_distance_m", 18),
     step_delay_ms: 0,
     use_gui: false,
   };
@@ -437,10 +443,41 @@ async function runSimulation(event) {
     await refreshTrace({ autoplay: true });
     startLiveReplayPolling();
   } catch (error) {
-    setMessage(`Simulation request failed: ${error.message}`, "error");
+    if (error.message && error.message.includes("409")) {
+      setMessage(
+        "A simulation is already running. Wait for it to finish, or click Reset to force-clear it.",
+        "error"
+      );
+      showResetButton();
+    } else {
+      setMessage(`Simulation request failed: ${error.message}`, "error");
+    }
   } finally {
     runButton.disabled = false;
     runButton.textContent = "Run Simulation";
+  }
+}
+
+function showResetButton() {
+  let resetBtn = document.getElementById("resetLockButton");
+  if (!resetBtn) {
+    resetBtn = document.createElement("button");
+    resetBtn.id = "resetLockButton";
+    resetBtn.className = "secondary-button";
+    resetBtn.type = "button";
+    resetBtn.textContent = "Reset Stuck Simulation";
+    resetBtn.style.marginLeft = "8px";
+    resetBtn.addEventListener("click", async () => {
+      try {
+        const result = await fetchJson("/simulate/reset", { method: "POST" });
+        setMessage(`Reset done: ${result.message} You can now run a new simulation.`);
+        resetBtn.remove();
+        await refreshRunStatus();
+      } catch (err) {
+        setMessage(`Reset failed: ${err.message}`, "error");
+      }
+    });
+    document.querySelector(".action-row").appendChild(resetBtn);
   }
 }
 

@@ -725,404 +725,421 @@ def run_simulation(config: SimulationConfig, run_id: str | None = None) -> None:
     sumo_cmd = build_sumo_command(config, route_file)
 
     traci.start(sumo_cmd)
-    apply_runtime_speed_limits(traci, config)
-    if config.use_gui:
-        add_gui_overlays(traci, config, rsus)
-        setup_gui_view(traci)
+    try:
+        apply_runtime_speed_limits(traci, config)
+        if config.use_gui:
+            add_gui_overlays(traci, config, rsus)
+            setup_gui_view(traci)
 
-    memories: dict[str, VehicleMemory] = {}
-    alert_file = OUTPUT_DIR / "alerts.csv"
-    trace_frames: list[dict[str, object]] = []
+        memories: dict[str, VehicleMemory] = {}
+        alert_file = OUTPUT_DIR / "alerts.csv"
+        trace_frames: list[dict[str, object]] = []
 
-    with alert_file.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "step",
-                "vehicle_id",
-                "event_type",
-                "source",
-                "current_edge",
-                "target_edge",
-                "vehicle_speed_kmph",
-                "limit_kmph",
-                "distance_m",
-                "message_id",
-                "hops",
-                "details",
-            ],
-        )
-        writer.writeheader()
+        with alert_file.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "step",
+                    "vehicle_id",
+                    "event_type",
+                    "source",
+                    "current_edge",
+                    "target_edge",
+                    "vehicle_speed_kmph",
+                    "limit_kmph",
+                    "distance_m",
+                    "message_id",
+                    "hops",
+                    "details",
+                ],
+            )
+            writer.writeheader()
 
-        while traci.simulation.getMinExpectedNumber() > 0:
-            traci.simulationStep()
-            if config.use_gui and config.step_delay_ms > 0:
-                time.sleep(config.step_delay_ms / 1000.0)
+            while traci.simulation.getMinExpectedNumber() > 0:
+                traci.simulationStep()
+                if config.use_gui and config.step_delay_ms > 0:
+                    time.sleep(config.step_delay_ms / 1000.0)
 
-            step = int(traci.simulation.getTime())
-            vehicle_ids = traci.vehicle.getIDList()
+                step = int(traci.simulation.getTime())
+                vehicle_ids = traci.vehicle.getIDList()
 
-            for vehicle_id in vehicle_ids:
-                memories.setdefault(vehicle_id, VehicleMemory())
-                memories[vehicle_id].status = "ok"
-
-            vehicle_positions = {
-                vehicle_id: traci.vehicle.getPosition(vehicle_id) for vehicle_id in vehicle_ids
-            }
-
-            for rsu in rsus:
-                base_message = SpeedLimitMessage(
-                    message_id=f"{rsu.rsu_id}@{step}",
-                    origin_type="rsu",
-                    origin_id=rsu.rsu_id,
-                    approach_edge=rsu.approach_edge,
-                    target_edge=rsu.target_edge,
-                    target_limit_mps=rsu.target_limit_mps,
-                    issued_step=step,
-                    ttl_steps=config.ttl_steps,
-                    hops=0,
-                )
                 for vehicle_id in vehicle_ids:
-                    current_edge = traci.vehicle.getRoadID(vehicle_id)
-                    if current_edge != rsu.approach_edge:
-                        continue
+                    memories.setdefault(vehicle_id, VehicleMemory())
+                    memories[vehicle_id].status = "ok"
 
-                    x_pos, y_pos = vehicle_positions[vehicle_id]
-                    distance = euclidean(x_pos, y_pos, rsu.x, rsu.y)
-                    if distance > rsu.broadcast_range_m:
-                        continue
+                vehicle_positions = {
+                    vehicle_id: traci.vehicle.getPosition(vehicle_id)
+                    for vehicle_id in vehicle_ids
+                }
 
-                    memory = memories[vehicle_id]
-                    if accept_message(memory, base_message, step):
-                        write_event(
-                            writer,
-                            {
-                                "step": step,
-                                "vehicle_id": vehicle_id,
-                                "event_type": "message_received",
-                                "source": "rsu",
-                                "current_edge": current_edge,
-                                "target_edge": rsu.target_edge,
-                                "vehicle_speed_kmph": round(
-                                    kmph(traci.vehicle.getSpeed(vehicle_id)), 2
-                                ),
-                                "limit_kmph": round(kmph(rsu.target_limit_mps), 2),
-                            "distance_m": round(distance, 2),
-                            "message_id": base_message.message_id,
-                            "hops": base_message.hops,
-                            "details": "rsu_speed_limit_broadcast",
-                        },
+                # RSU → vehicle broadcasts
+                for rsu in rsus:
+                    base_message = SpeedLimitMessage(
+                        message_id=f"{rsu.rsu_id}@{step}",
+                        origin_type="rsu",
+                        origin_id=rsu.rsu_id,
+                        approach_edge=rsu.approach_edge,
+                        target_edge=rsu.target_edge,
+                        target_limit_mps=rsu.target_limit_mps,
+                        issued_step=step,
+                        ttl_steps=config.ttl_steps,
+                        hops=0,
                     )
+                    for vehicle_id in vehicle_ids:
+                        current_edge = traci.vehicle.getRoadID(vehicle_id)
+                        if current_edge != rsu.approach_edge:
+                            continue
 
-            for sender_id in vehicle_ids:
-                sender_memory = memories[sender_id]
-                message = best_message_for_vehicle(sender_memory, step)
-                if message is None:
-                    continue
+                        x_pos, y_pos = vehicle_positions[vehicle_id]
+                        distance = euclidean(x_pos, y_pos, rsu.x, rsu.y)
+                        if distance > rsu.broadcast_range_m:
+                            continue
 
-                if sender_memory.last_forwarded.get(message.target_edge) == step:
-                    continue
+                        memory = memories[vehicle_id]
+                        if accept_message(memory, base_message, step):
+                            write_event(
+                                writer,
+                                {
+                                    "step": step,
+                                    "vehicle_id": vehicle_id,
+                                    "event_type": "message_received",
+                                    "source": "rsu",
+                                    "current_edge": current_edge,
+                                    "target_edge": rsu.target_edge,
+                                    "vehicle_speed_kmph": round(
+                                        kmph(traci.vehicle.getSpeed(vehicle_id)), 2
+                                    ),
+                                    "limit_kmph": round(kmph(rsu.target_limit_mps), 2),
+                                    "distance_m": round(distance, 2),
+                                    "message_id": base_message.message_id,
+                                    "hops": base_message.hops,
+                                    "details": "rsu_speed_limit_broadcast",
+                                },
+                            )
 
-                sender_x, sender_y = vehicle_positions[sender_id]
-                for receiver_id in vehicle_ids:
-                    if receiver_id == sender_id:
+                # V2V forwarding
+                for sender_id in vehicle_ids:
+                    sender_memory = memories[sender_id]
+                    message = best_message_for_vehicle(sender_memory, step)
+                    if message is None:
                         continue
 
-                    receiver_x, receiver_y = vehicle_positions[receiver_id]
-                    distance = euclidean(sender_x, sender_y, receiver_x, receiver_y)
-                    if distance > config.v2v_range_m:
+                    if sender_memory.last_forwarded.get(message.target_edge) == step:
                         continue
 
-                    forwarded = replace(
-                        message,
-                        origin_type="vehicle",
-                        origin_id=sender_id,
-                        ttl_steps=max(message.ttl_steps - 1, 0),
-                        hops=message.hops + 1,
+                    sender_x, sender_y = vehicle_positions[sender_id]
+                    for receiver_id in vehicle_ids:
+                        if receiver_id == sender_id:
+                            continue
+
+                        receiver_x, receiver_y = vehicle_positions[receiver_id]
+                        distance = euclidean(sender_x, sender_y, receiver_x, receiver_y)
+                        if distance > config.v2v_range_m:
+                            continue
+
+                        forwarded = replace(
+                            message,
+                            origin_type="vehicle",
+                            origin_id=sender_id,
+                            ttl_steps=max(message.ttl_steps - 1, 0),
+                            hops=message.hops + 1,
+                        )
+                        if forwarded.ttl_steps <= 0:
+                            continue
+
+                        receiver_memory = memories[receiver_id]
+                        if accept_message(receiver_memory, forwarded, step):
+                            write_event(
+                                writer,
+                                {
+                                    "step": step,
+                                    "vehicle_id": receiver_id,
+                                    "event_type": "message_received",
+                                    "source": f"vehicle:{sender_id}",
+                                    "current_edge": traci.vehicle.getRoadID(receiver_id),
+                                    "target_edge": forwarded.target_edge,
+                                    "vehicle_speed_kmph": round(
+                                        kmph(traci.vehicle.getSpeed(receiver_id)), 2
+                                    ),
+                                    "limit_kmph": round(kmph(forwarded.target_limit_mps), 2),
+                                    "distance_m": round(distance, 2),
+                                    "message_id": forwarded.message_id,
+                                    "hops": forwarded.hops,
+                                    "details": "v2v_speed_limit_forward",
+                                },
+                            )
+
+                    sender_memory.last_forwarded[message.target_edge] = step
+
+                # Safety message broadcasting
+                for sender_id in vehicle_ids:
+                    current_edge = traci.vehicle.getRoadID(sender_id)
+                    speed_mps = traci.vehicle.getSpeed(sender_id)
+                    leader_info = traci.vehicle.getLeader(
+                        sender_id,
+                        max(config.safety_gap_m, config.minimum_follow_distance_m) + 20.0,
                     )
-                    if forwarded.ttl_steps <= 0:
-                        continue
+                    acceleration = traci.vehicle.getAcceleration(sender_id)
+                    should_broadcast_safety = False
+                    safety_reason = ""
+                    recommended_speed_mps = max(speed_mps * 0.7, 4.0)
+                    risk_distance = None
 
-                    receiver_memory = memories[receiver_id]
-                    if accept_message(receiver_memory, forwarded, step):
-                        write_event(
-                            writer,
-                            {
-                                "step": step,
-                                "vehicle_id": receiver_id,
-                                "event_type": "message_received",
-                                "source": f"vehicle:{sender_id}",
-                                "current_edge": traci.vehicle.getRoadID(receiver_id),
-                                "target_edge": forwarded.target_edge,
-                                "vehicle_speed_kmph": round(
-                                    kmph(traci.vehicle.getSpeed(receiver_id)), 2
-                                ),
-                                "limit_kmph": round(kmph(forwarded.target_limit_mps), 2),
-                                "distance_m": round(distance, 2),
-                                "message_id": forwarded.message_id,
-                                "hops": forwarded.hops,
-                                "details": "v2v_speed_limit_forward",
-                            },
-                        )
+                    if leader_info is not None:
+                        _, gap = leader_info
+                        if gap <= config.minimum_follow_distance_m:
+                            should_broadcast_safety = True
+                            safety_reason = "minimum_distance_breach"
+                            risk_distance = gap
+                            recommended_speed_mps = min(
+                                recommended_speed_mps,
+                                max(speed_mps * 0.55, 2.5),
+                            )
+                        if gap <= config.safety_gap_m:
+                            should_broadcast_safety = True
+                            safety_reason = (
+                                f"{safety_reason}+short_headway"
+                                if safety_reason else "short_headway"
+                            )
+                            risk_distance = gap
+                            recommended_speed_mps = min(
+                                recommended_speed_mps, max(speed_mps * 0.6, 3.0)
+                            )
 
-                sender_memory.last_forwarded[message.target_edge] = step
-
-            for sender_id in vehicle_ids:
-                lane_id = traci.vehicle.getLaneID(sender_id)
-                current_edge = traci.vehicle.getRoadID(sender_id)
-                speed_mps = traci.vehicle.getSpeed(sender_id)
-                leader_info = traci.vehicle.getLeader(
-                    sender_id,
-                    max(config.safety_gap_m, config.minimum_follow_distance_m) + 20.0,
-                )
-                acceleration = traci.vehicle.getAcceleration(sender_id)
-                should_broadcast_safety = False
-                safety_reason = ""
-                recommended_speed_mps = max(speed_mps * 0.7, 4.0)
-                risk_distance = None
-
-                if leader_info is not None:
-                    _, gap = leader_info
-                    if gap <= config.minimum_follow_distance_m:
-                        should_broadcast_safety = True
-                        safety_reason = "minimum_distance_breach"
-                        risk_distance = gap
-                        recommended_speed_mps = min(
-                            recommended_speed_mps,
-                            max(speed_mps * 0.55, 2.5),
-                        )
-                    if gap <= config.safety_gap_m:
+                    if acceleration <= -config.harsh_brake_threshold_mps2:
                         should_broadcast_safety = True
                         safety_reason = (
-                            f"{safety_reason}+short_headway"
-                            if safety_reason else "short_headway"
+                            "harsh_brake" if not safety_reason
+                            else f"{safety_reason}+harsh_brake"
                         )
-                        risk_distance = gap
-                        recommended_speed_mps = min(recommended_speed_mps, max(speed_mps * 0.6, 3.0))
 
-                if acceleration <= -config.harsh_brake_threshold_mps2:
-                    should_broadcast_safety = True
-                    safety_reason = "harsh_brake" if not safety_reason else f"{safety_reason}+harsh_brake"
-
-                if not should_broadcast_safety:
-                    continue
-
-                safety_message = SafetyMessage(
-                    message_id=f"safety:{sender_id}@{step}",
-                    origin_id=sender_id,
-                    risk_edge=current_edge,
-                    issued_step=step,
-                    ttl_steps=8,
-                    hops=0,
-                    recommended_speed_mps=recommended_speed_mps,
-                    reason=safety_reason,
-                )
-
-                for receiver_id in vehicle_ids:
-                    if receiver_id == sender_id:
-                        continue
-                    if traci.vehicle.getRoadID(receiver_id) != current_edge:
-                        continue
-                    sender_x, sender_y = vehicle_positions[sender_id]
-                    receiver_x, receiver_y = vehicle_positions[receiver_id]
-                    distance = euclidean(sender_x, sender_y, receiver_x, receiver_y)
-                    if distance > config.v2v_range_m:
+                    if not should_broadcast_safety:
                         continue
 
-                    receiver_memory = memories[receiver_id]
-                    if accept_safety_message(receiver_memory, safety_message, step):
-                        write_event(
-                            writer,
-                            {
-                                "step": step,
-                                "vehicle_id": receiver_id,
-                                "event_type": "collision_warning",
-                                "source": f"vehicle:{sender_id}",
-                                "current_edge": current_edge,
-                                "target_edge": current_edge,
-                                "vehicle_speed_kmph": round(
-                                    kmph(traci.vehicle.getSpeed(receiver_id)), 2
-                                ),
-                                "limit_kmph": round(
-                                    kmph(traci.lane.getMaxSpeed(traci.vehicle.getLaneID(receiver_id))), 2
-                                ),
-                                "distance_m": round(distance, 2),
-                                "message_id": safety_message.message_id,
-                                "hops": safety_message.hops,
-                                "details": (
-                                    f"{safety_reason};recommended={kmph(recommended_speed_mps):.1f}"
-                                    + (
-                                        f";gap={risk_distance:.1f}"
-                                        if risk_distance is not None else ""
-                                    )
-                                ),
-                            },
-                        )
-
-            for vehicle_id in vehicle_ids:
-                memory = memories[vehicle_id]
-                lane_id = traci.vehicle.getLaneID(vehicle_id)
-                lane_limit_mps = traci.lane.getMaxSpeed(lane_id)
-                current_edge = traci.vehicle.getRoadID(vehicle_id)
-                speed_mps = traci.vehicle.getSpeed(vehicle_id)
-                lane_pos = traci.vehicle.getLanePosition(vehicle_id)
-                lane_length = traci.lane.getLength(lane_id)
-                remaining_distance = lane_length - lane_pos
-
-                if speed_mps > lane_limit_mps + 0.5:
-                    memory.status = "speeding"
-                    if should_emit_alert(memory, "current_limit", step):
-                        write_event(
-                            writer,
-                            {
-                                "step": step,
-                                "vehicle_id": vehicle_id,
-                                "event_type": "current_limit_warning",
-                                "source": "controller",
-                                "current_edge": current_edge,
-                                "target_edge": current_edge,
-                                "vehicle_speed_kmph": round(kmph(speed_mps), 2),
-                                "limit_kmph": round(kmph(lane_limit_mps), 2),
-                                "distance_m": round(remaining_distance, 2),
-                                "message_id": "",
-                                "hops": "",
-                                "details": "current_speed_above_limit",
-                            },
-                        )
-
-                active_safety = best_safety_message(memory, step)
-                if active_safety is not None and current_edge == active_safety.risk_edge:
-                    memory.status = "danger"
-                    safe_speed = min(
-                        active_safety.recommended_speed_mps,
-                        lane_limit_mps,
-                    )
-                    traci.vehicle.slowDown(vehicle_id, safe_speed, 2.5)
-                    if should_emit_alert(memory, f"safety:{active_safety.risk_edge}", step, cooldown_steps=3):
-                        write_event(
-                            writer,
-                            {
-                                "step": step,
-                                "vehicle_id": vehicle_id,
-                                "event_type": "collision_response",
-                                "source": f"vehicle:{active_safety.origin_id}",
-                                "current_edge": current_edge,
-                                "target_edge": current_edge,
-                                "vehicle_speed_kmph": round(kmph(speed_mps), 2),
-                                "limit_kmph": round(kmph(safe_speed), 2),
-                                "distance_m": round(remaining_distance, 2),
-                                "message_id": active_safety.message_id,
-                                "hops": active_safety.hops,
-                                "details": active_safety.reason,
-                            },
-                        )
-
-                active_message = best_message_for_vehicle(memory, step)
-                if active_message is None:
-                    continue
-
-                if (
-                    current_edge == active_message.approach_edge
-                    and remaining_distance <= 150.0
-                    and speed_mps > active_message.target_limit_mps + 0.5
-                    and should_emit_alert(memory, f"upcoming:{active_message.target_edge}", step)
-                ):
-                    if memory.status not in {"speeding", "danger"}:
-                        memory.status = "warned"
-                    write_event(
-                        writer,
-                        {
-                            "step": step,
-                            "vehicle_id": vehicle_id,
-                            "event_type": "upcoming_limit_warning",
-                            "source": active_message.origin_type,
-                            "current_edge": current_edge,
-                            "target_edge": active_message.target_edge,
-                            "vehicle_speed_kmph": round(kmph(speed_mps), 2),
-                            "limit_kmph": round(kmph(active_message.target_limit_mps), 2),
-                            "distance_m": round(remaining_distance, 2),
-                            "message_id": active_message.message_id,
-                            "hops": active_message.hops,
-                            "details": "approaching_lower_speed_zone",
-                        },
+                    safety_message = SafetyMessage(
+                        message_id=f"safety:{sender_id}@{step}",
+                        origin_id=sender_id,
+                        risk_edge=current_edge,
+                        issued_step=step,
+                        ttl_steps=8,
+                        hops=0,
+                        recommended_speed_mps=recommended_speed_mps,
+                        reason=safety_reason,
                     )
 
-            frame_vehicles: list[dict[str, object]] = []
-            for vehicle_id in vehicle_ids:
-                lane_id = traci.vehicle.getLaneID(vehicle_id)
-                frame_vehicles.append(
-                    {
-                        "vehicle_id": vehicle_id,
-                        "edge_id": traci.vehicle.getRoadID(vehicle_id),
-                        "x": round(traci.vehicle.getPosition(vehicle_id)[0], 2),
-                        "y": round(traci.vehicle.getPosition(vehicle_id)[1], 2),
-                        "speed_kmph": round(kmph(traci.vehicle.getSpeed(vehicle_id)), 2),
-                        "limit_kmph": round(kmph(traci.lane.getMaxSpeed(lane_id)), 2),
-                        "lane_position_m": round(traci.vehicle.getLanePosition(vehicle_id), 2),
-                        "status": memories[vehicle_id].status,
-                    }
-                )
-            trace_frames.append(
-                {
-                    "step": step,
-                    "vehicles": frame_vehicles,
-                }
-            )
+                    for receiver_id in vehicle_ids:
+                        if receiver_id == sender_id:
+                            continue
+                        if traci.vehicle.getRoadID(receiver_id) != current_edge:
+                            continue
+                        sender_x, sender_y = vehicle_positions[sender_id]
+                        receiver_x, receiver_y = vehicle_positions[receiver_id]
+                        distance = euclidean(sender_x, sender_y, receiver_x, receiver_y)
+                        if distance > config.v2v_range_m:
+                            continue
 
-            if step == 1 or step % 5 == 0 or not vehicle_ids:
-                write_trace_file(
-                    config,
-                    rsus,
-                    trace_frames,
-                    route_file,
-                    run_id=run_id,
-                    run_status="running",
-                )
+                        receiver_memory = memories[receiver_id]
+                        if accept_safety_message(receiver_memory, safety_message, step):
+                            write_event(
+                                writer,
+                                {
+                                    "step": step,
+                                    "vehicle_id": receiver_id,
+                                    "event_type": "collision_warning",
+                                    "source": f"vehicle:{sender_id}",
+                                    "current_edge": current_edge,
+                                    "target_edge": current_edge,
+                                    "vehicle_speed_kmph": round(
+                                        kmph(traci.vehicle.getSpeed(receiver_id)), 2
+                                    ),
+                                    "limit_kmph": round(
+                                        kmph(traci.lane.getMaxSpeed(
+                                            traci.vehicle.getLaneID(receiver_id)
+                                        )), 2
+                                    ),
+                                    "distance_m": round(distance, 2),
+                                    "message_id": safety_message.message_id,
+                                    "hops": safety_message.hops,
+                                    "details": (
+                                        f"{safety_reason};recommended="
+                                        f"{kmph(recommended_speed_mps):.1f}"
+                                        + (
+                                            f";gap={risk_distance:.1f}"
+                                            if risk_distance is not None else ""
+                                        )
+                                    ),
+                                },
+                            )
 
-            if config.use_gui:
+                # Per-vehicle status evaluation and alert logging
                 for vehicle_id in vehicle_ids:
-                    update_vehicle_visuals(
-                        traci,
-                        vehicle_id,
-                        memories[vehicle_id],
-                        traci.vehicle.getSpeed(vehicle_id),
-                    )
-                update_vehicle_text_and_table(traci, vehicle_ids, memories)
-                update_dashboard_text(traci, step, vehicle_ids, memories, config)
-                remove_departed_vehicle_labels(traci, vehicle_ids)
+                    memory = memories[vehicle_id]
+                    lane_id = traci.vehicle.getLaneID(vehicle_id)
+                    lane_limit_mps = traci.lane.getMaxSpeed(lane_id)
+                    current_edge = traci.vehicle.getRoadID(vehicle_id)
+                    speed_mps = traci.vehicle.getSpeed(vehicle_id)
+                    lane_pos = traci.vehicle.getLanePosition(vehicle_id)
+                    lane_length = traci.lane.getLength(lane_id)
+                    remaining_distance = lane_length - lane_pos
 
-                if vehicle_ids:
-                    focus_vehicle = max(
-                        vehicle_ids,
-                        key=lambda veh_id: (
-                            3 if memories[veh_id].status == "danger" else
-                            2 if memories[veh_id].status == "speeding" else
-                            1 if memories[veh_id].status == "warned" else
-                            0,
-                            traci.vehicle.getLanePosition(veh_id),
-                        ),
+                    if speed_mps > lane_limit_mps + 0.5:
+                        memory.status = "speeding"
+                        if should_emit_alert(memory, "current_limit", step):
+                            write_event(
+                                writer,
+                                {
+                                    "step": step,
+                                    "vehicle_id": vehicle_id,
+                                    "event_type": "current_limit_warning",
+                                    "source": "controller",
+                                    "current_edge": current_edge,
+                                    "target_edge": current_edge,
+                                    "vehicle_speed_kmph": round(kmph(speed_mps), 2),
+                                    "limit_kmph": round(kmph(lane_limit_mps), 2),
+                                    "distance_m": round(remaining_distance, 2),
+                                    "message_id": "",
+                                    "hops": "",
+                                    "details": "current_speed_above_limit",
+                                },
+                            )
+
+                    active_safety = best_safety_message(memory, step)
+                    if active_safety is not None and current_edge == active_safety.risk_edge:
+                        memory.status = "danger"
+                        safe_speed = min(
+                            active_safety.recommended_speed_mps,
+                            lane_limit_mps,
+                        )
+                        traci.vehicle.slowDown(vehicle_id, safe_speed, 2.5)
+                        if should_emit_alert(
+                            memory, f"safety:{active_safety.risk_edge}", step, cooldown_steps=3
+                        ):
+                            write_event(
+                                writer,
+                                {
+                                    "step": step,
+                                    "vehicle_id": vehicle_id,
+                                    "event_type": "collision_response",
+                                    "source": f"vehicle:{active_safety.origin_id}",
+                                    "current_edge": current_edge,
+                                    "target_edge": current_edge,
+                                    "vehicle_speed_kmph": round(kmph(speed_mps), 2),
+                                    "limit_kmph": round(kmph(safe_speed), 2),
+                                    "distance_m": round(remaining_distance, 2),
+                                    "message_id": active_safety.message_id,
+                                    "hops": active_safety.hops,
+                                    "details": active_safety.reason,
+                                },
+                            )
+
+                    active_message = best_message_for_vehicle(memory, step)
+                    if active_message is None:
+                        continue
+
+                    if (
+                        current_edge == active_message.approach_edge
+                        and remaining_distance <= 150.0
+                        and speed_mps > active_message.target_limit_mps + 0.5
+                        and should_emit_alert(
+                            memory, f"upcoming:{active_message.target_edge}", step
+                        )
+                    ):
+                        if memory.status not in {"speeding", "danger"}:
+                            memory.status = "warned"
+                        write_event(
+                            writer,
+                            {
+                                "step": step,
+                                "vehicle_id": vehicle_id,
+                                "event_type": "upcoming_limit_warning",
+                                "source": active_message.origin_type,
+                                "current_edge": current_edge,
+                                "target_edge": active_message.target_edge,
+                                "vehicle_speed_kmph": round(kmph(speed_mps), 2),
+                                "limit_kmph": round(kmph(active_message.target_limit_mps), 2),
+                                "distance_m": round(remaining_distance, 2),
+                                "message_id": active_message.message_id,
+                                "hops": active_message.hops,
+                                "details": "approaching_lower_speed_zone",
+                            },
+                        )
+
+                # Build replay frame
+                frame_vehicles: list[dict[str, object]] = []
+                for vehicle_id in vehicle_ids:
+                    lane_id = traci.vehicle.getLaneID(vehicle_id)
+                    frame_vehicles.append(
+                        {
+                            "vehicle_id": vehicle_id,
+                            "edge_id": traci.vehicle.getRoadID(vehicle_id),
+                            "x": round(traci.vehicle.getPosition(vehicle_id)[0], 2),
+                            "y": round(traci.vehicle.getPosition(vehicle_id)[1], 2),
+                            "speed_kmph": round(kmph(traci.vehicle.getSpeed(vehicle_id)), 2),
+                            "limit_kmph": round(kmph(traci.lane.getMaxSpeed(lane_id)), 2),
+                            "lane_position_m": round(
+                                traci.vehicle.getLanePosition(vehicle_id), 2
+                            ),
+                            "status": memories[vehicle_id].status,
+                        }
                     )
-                    focus_speed = kmph(traci.vehicle.getSpeed(focus_vehicle))
-                    focus_limit = kmph(
-                        traci.lane.getMaxSpeed(traci.vehicle.getLaneID(focus_vehicle))
-                    )
-                    traci.simulation.writeMessage(
-                        f"Focus {focus_vehicle} | speed {focus_speed:.1f} km/h | "
-                        f"limit {focus_limit:.0f} km/h | status {memories[focus_vehicle].status.upper()}"
+                trace_frames.append({"step": step, "vehicles": frame_vehicles})
+
+                if step == 1 or step % 5 == 0 or not vehicle_ids:
+                    write_trace_file(
+                        config,
+                        rsus,
+                        trace_frames,
+                        route_file,
+                        run_id=run_id,
+                        run_status="running",
                     )
 
-    traci.close()
-    write_trace_file(
-        config,
-        rsus,
-        trace_frames,
-        route_file,
-        run_id=run_id,
-        run_status="completed",
-    )
-    print(f"Simulation complete. Alert log written to: {alert_file}")
-    print(f"Replay trace written to: {TRACE_FILE}")
-    print(f"Runtime route file: {route_file}")
+                if config.use_gui:
+                    for vehicle_id in vehicle_ids:
+                        update_vehicle_visuals(
+                            traci,
+                            vehicle_id,
+                            memories[vehicle_id],
+                            traci.vehicle.getSpeed(vehicle_id),
+                        )
+                    update_vehicle_text_and_table(traci, vehicle_ids, memories)
+                    update_dashboard_text(traci, step, vehicle_ids, memories, config)
+                    remove_departed_vehicle_labels(traci, vehicle_ids)
+
+                    if vehicle_ids:
+                        focus_vehicle = max(
+                            vehicle_ids,
+                            key=lambda veh_id: (
+                                3 if memories[veh_id].status == "danger" else
+                                2 if memories[veh_id].status == "speeding" else
+                                1 if memories[veh_id].status == "warned" else
+                                0,
+                                traci.vehicle.getLanePosition(veh_id),
+                            ),
+                        )
+                        focus_speed = kmph(traci.vehicle.getSpeed(focus_vehicle))
+                        focus_limit = kmph(
+                            traci.lane.getMaxSpeed(traci.vehicle.getLaneID(focus_vehicle))
+                        )
+                        traci.simulation.writeMessage(
+                            f"Focus {focus_vehicle} | speed {focus_speed:.1f} km/h | "
+                            f"limit {focus_limit:.0f} km/h | "
+                            f"status {memories[focus_vehicle].status.upper()}"
+                        )
+
+        write_trace_file(
+            config,
+            rsus,
+            trace_frames,
+            route_file,
+            run_id=run_id,
+            run_status="completed",
+        )
+        print(f"Simulation complete. Alert log written to: {alert_file}")
+        print(f"Replay trace written to: {TRACE_FILE}")
+        print(f"Runtime route file: {route_file}")
+    finally:
+        traci.close()
 
 
 def parse_args() -> argparse.Namespace:

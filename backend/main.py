@@ -11,7 +11,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from backend.src.run_simulation import (
+from src.run_simulation import (
     OUTPUT_DIR,
     RUNTIME_DIR,
     TRACE_FILE,
@@ -49,6 +49,14 @@ latest_run: dict[str, object] = {
     "runtime_dir": str(RUNTIME_DIR),
     "error": None,
 }
+
+
+def _force_release_lock() -> None:
+    """Release the run lock if it is currently held (for stuck/crashed runs)."""
+    try:
+        run_lock.release()
+    except RuntimeError:
+        pass  # already unlocked — that's fine
 
 
 class SimulationRequest(BaseModel):
@@ -117,12 +125,16 @@ def _run_in_background(config: SimulationConfig, run_id: str) -> None:
         run_simulation(config, run_id=run_id)
         latest_run["status"] = "completed"
         latest_run["finished_at"] = _timestamp()
-    except Exception as exc:  # pragma: no cover - runtime safety
+    except Exception as exc:
         latest_run["status"] = "failed"
         latest_run["finished_at"] = _timestamp()
         latest_run["error"] = str(exc)
     finally:
-        run_lock.release()
+        # Always release — even if run_simulation raised SystemExit or BaseException
+        try:
+            run_lock.release()
+        except RuntimeError:
+            pass
 
 
 @app.get("/")
@@ -139,6 +151,21 @@ def root() -> dict[str, object]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/simulate/reset")
+def reset_simulation() -> dict[str, str]:
+    """Force-clear a stuck simulation lock so a new run can be submitted."""
+    was_locked = run_lock.locked()
+    _force_release_lock()
+    latest_run["status"] = "failed"
+    latest_run["finished_at"] = _timestamp()
+    if latest_run.get("error") is None:
+        latest_run["error"] = "Manually reset by user."
+    return {
+        "message": "Lock cleared." if was_locked else "Lock was already free.",
+        "status": "idle",
+    }
 
 
 @app.get("/config/defaults")
@@ -207,6 +234,10 @@ def get_latest_trace() -> dict[str, object]:
 
 @app.post("/simulate", response_model=SimulationRunState)
 def simulate(request: SimulationRequest, background_tasks: BackgroundTasks) -> SimulationRunState:
+    # If the previous run failed or completed but left the lock held, auto-release it.
+    if run_lock.locked() and latest_run.get("status") in {"failed", "completed"}:
+        _force_release_lock()
+
     if run_lock.locked():
         raise HTTPException(status_code=409, detail="A simulation is already running.")
 
