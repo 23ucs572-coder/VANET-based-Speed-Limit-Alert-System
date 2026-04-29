@@ -25,6 +25,17 @@ let replayFrameCount = 0;
 let latestRunStatus = "idle";
 let liveReplayPoller = null;
 
+const istDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: true,
+});
+
 function getBackendUrl() {
   return backendUrlInput.value.trim().replace(/\/+$/, "");
 }
@@ -46,6 +57,19 @@ function setRunStatus(status) {
   if (status === "failed") runStatusBadge.classList.add("failed");
   if (status === "idle") runStatusBadge.classList.add("ok");
   playReplayButton.disabled = status === "running";
+}
+
+function formatIstTimestamp(timestamp) {
+  if (!timestamp) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+
+  return `${istDateTimeFormatter.format(date)} IST`;
 }
 
 async function fetchJson(path, options = {}) {
@@ -258,8 +282,12 @@ async function refreshRunStatus() {
   try {
     const latest = await fetchJson("/runs/latest");
     setRunStatus(latest.status);
-    runStartedAt.textContent = latest.started_at ? `Started ${latest.started_at}` : "Not started";
-    runFinishedAt.textContent = latest.finished_at ? `Finished ${latest.finished_at}` : "Not finished";
+    runStartedAt.textContent = latest.started_at
+      ? `Started ${formatIstTimestamp(latest.started_at)}`
+      : "Not started";
+    runFinishedAt.textContent = latest.finished_at
+      ? `Finished ${formatIstTimestamp(latest.finished_at)}`
+      : "Not finished";
     configPreview.textContent = latest.config
       ? JSON.stringify(latest.config, null, 2)
       : "No run yet.";
@@ -369,7 +397,7 @@ async function runSimulation(event) {
     setMessage(`Simulation request failed: ${error.message}`, "error");
   } finally {
     runButton.disabled = false;
-    runButton.textContent = "Run Cloud Simulation";
+    runButton.textContent = "Run Simulation";
   }
 }
 
