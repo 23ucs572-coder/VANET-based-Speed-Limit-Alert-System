@@ -48,6 +48,27 @@ function setMessage(text, type = "info") {
   }
 }
 
+function resetUiState() {
+  stopReplay();
+  stopLiveReplayPolling();
+  replayData = null;
+  replayIndex = 0;
+  replayRunId = null;
+  replayFrameCount = 0;
+  latestRunStatus = "idle";
+  backendUrlLabel.textContent = getBackendUrl();
+  backendStatus.textContent = "Not checked";
+  runStatusBadge.textContent = "Idle";
+  runStatusBadge.className = "badge ok";
+  runStartedAt.textContent = "Not started";
+  runFinishedAt.textContent = "Not finished";
+  configPreview.textContent = "No run yet.";
+  playReplayButton.disabled = false;
+  setMessage("Ready.");
+  drawReplayFrame();
+  refreshRows();
+}
+
 function setRunStatus(status) {
   latestRunStatus = status || "Unknown";
   runStatusBadge.textContent = status || "Unknown";
@@ -371,13 +392,9 @@ async function runSimulation(event) {
   runButton.disabled = true;
   runButton.textContent = "Submitting...";
   backendUrlLabel.textContent = getBackendUrl();
-  stopReplay();
-  stopLiveReplayPolling();
-  replayData = null;
-  replayIndex = 0;
-  replayRunId = null;
-  replayFrameCount = 0;
-  drawReplayFrame();
+  resetUiState();
+  runButton.disabled = true;
+  runButton.textContent = "Submitting...";
 
   try {
     const payload = buildPayload();
@@ -410,10 +427,8 @@ async function refreshAll() {
 
 form.addEventListener("submit", runSimulation);
 refreshButton.addEventListener("click", refreshAll);
-backendUrlInput.addEventListener("change", refreshAll);
+backendUrlInput.addEventListener("change", resetUiState);
 playReplayButton.addEventListener("click", () => startReplay({ restartIfComplete: true }));
 pauseReplayButton.addEventListener("click", stopReplay);
 
-refreshAll();
-setInterval(refreshRunStatus, 12000);
-setInterval(refreshTrace, 15000);
+resetUiState();
