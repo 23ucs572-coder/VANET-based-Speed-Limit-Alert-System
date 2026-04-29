@@ -146,6 +146,9 @@
           <span class="badge badge-muted" id="replayVehicleCount">Vehicles --</span>
         </div>
         <div class="replay-actions">
+          <button id="replaySpeedHalfButton" class="secondary-button replay-speed-button" type="button">0.5x</button>
+          <button id="replaySpeedNormalButton" class="secondary-button replay-speed-button active" type="button">1x</button>
+          <button id="replaySpeedDoubleButton" class="secondary-button replay-speed-button" type="button">2x</button>
           <button id="playReplayButton" class="primary-button" type="button">Play Simulation Demo</button>
           <button id="pauseReplayButton" class="secondary-button" type="button">Pause</button>
         </div>
@@ -174,23 +177,25 @@
               <th>Status</th>
               <th>Edge</th>
               <th>X Position</th>
-              <th>Lane Position</th>
               <th>Speed</th>
               <th>Limit</th>
               <th>Distance Left</th>
               <th>Y Position</th>
-              <th>Notes</th>
             </tr>
           </thead>
           <tbody id="alertsTableBody">
             <tr>
-              <td colspan="11" class="empty-state">No simulation timeline loaded yet.</td>
+              <td colspan="9" class="empty-state">No simulation timeline loaded yet.</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
   </div>
+
+  <button id="backToTopButton" class="back-to-top-button" type="button" aria-label="Back to top">
+    Top
+  </button>
 
   <script src="./app.js"></script>
 </body>

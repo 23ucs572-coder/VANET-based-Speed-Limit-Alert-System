@@ -15,6 +15,10 @@ const replayStep = document.getElementById("replayStep");
 const replayVehicleCount = document.getElementById("replayVehicleCount");
 const playReplayButton = document.getElementById("playReplayButton");
 const pauseReplayButton = document.getElementById("pauseReplayButton");
+const replaySpeedHalfButton = document.getElementById("replaySpeedHalfButton");
+const replaySpeedNormalButton = document.getElementById("replaySpeedNormalButton");
+const replaySpeedDoubleButton = document.getElementById("replaySpeedDoubleButton");
+const backToTopButton = document.getElementById("backToTopButton");
 const replayContext = replayCanvas.getContext("2d");
 
 let replayData = null;
@@ -24,6 +28,7 @@ let replayRunId = null;
 let replayFrameCount = 0;
 let latestRunStatus = "idle";
 let liveReplayPoller = null;
+let replaySpeed = 1;
 
 const istDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -48,6 +53,14 @@ function setMessage(text, type = "info") {
   }
 }
 
+function updateBackToTopVisibility() {
+  if (window.scrollY > 320) {
+    backToTopButton.classList.add("visible");
+  } else {
+    backToTopButton.classList.remove("visible");
+  }
+}
+
 function resetUiState() {
   stopReplay();
   stopLiveReplayPolling();
@@ -56,6 +69,7 @@ function resetUiState() {
   replayRunId = null;
   replayFrameCount = 0;
   latestRunStatus = "idle";
+  replaySpeed = 1;
   backendUrlLabel.textContent = getBackendUrl();
   backendStatus.textContent = "Not checked";
   runStatusBadge.textContent = "Idle";
@@ -64,9 +78,24 @@ function resetUiState() {
   runFinishedAt.textContent = "Not finished";
   configPreview.textContent = "No run yet.";
   playReplayButton.disabled = false;
+  updateReplaySpeedButtons();
   setMessage("Ready.");
   drawReplayFrame();
   refreshRows();
+}
+
+function updateReplaySpeedButtons() {
+  replaySpeedHalfButton.classList.toggle("active", replaySpeed === 0.5);
+  replaySpeedNormalButton.classList.toggle("active", replaySpeed === 1);
+  replaySpeedDoubleButton.classList.toggle("active", replaySpeed === 2);
+}
+
+function setReplaySpeed(nextSpeed) {
+  replaySpeed = nextSpeed;
+  updateReplaySpeedButtons();
+  if (replayTimer) {
+    startReplay({ restartIfComplete: false });
+  }
 }
 
 function setRunStatus(status) {
@@ -115,7 +144,6 @@ function renderTimelineRows(trace) {
           status: vehicle.status ?? "",
           edge_id: vehicle.edge_id ?? "",
           x: vehicle.x ?? "",
-          lane_position_m: vehicle.lane_position_m ?? "",
           speed_kmph: vehicle.speed_kmph ?? "",
           limit_kmph: vehicle.limit_kmph ?? "",
           distance_left_m:
@@ -129,7 +157,7 @@ function renderTimelineRows(trace) {
   if (rows.length === 0) {
     alertsTableBody.innerHTML = `
       <tr>
-        <td colspan="11" class="empty-state">No simulation timeline loaded yet.</td>
+        <td colspan="9" class="empty-state">No simulation timeline loaded yet.</td>
       </tr>
     `;
     return;
@@ -143,12 +171,10 @@ function renderTimelineRows(trace) {
         <td>${row.status ?? ""}</td>
         <td>${row.edge_id ?? ""}</td>
         <td>${row.x ?? ""}</td>
-        <td>${row.lane_position_m ?? ""}</td>
         <td>${row.speed_kmph ?? ""}</td>
         <td>${row.limit_kmph ?? ""}</td>
         <td>${row.distance_left_m ?? ""}</td>
         <td>${row.y ?? ""}</td>
-        <td>trace_frame</td>
       </tr>
     `)
     .join("");
@@ -266,7 +292,7 @@ function startReplay({ restartIfComplete = true } = {}) {
     }
     replayIndex += 1;
     drawReplayFrame();
-  }, 160);
+  }, 160 / replaySpeed);
 }
 
 function stopLiveReplayPolling() {
@@ -430,5 +456,13 @@ refreshButton.addEventListener("click", refreshAll);
 backendUrlInput.addEventListener("change", resetUiState);
 playReplayButton.addEventListener("click", () => startReplay({ restartIfComplete: true }));
 pauseReplayButton.addEventListener("click", stopReplay);
+replaySpeedHalfButton.addEventListener("click", () => setReplaySpeed(0.5));
+replaySpeedNormalButton.addEventListener("click", () => setReplaySpeed(1));
+replaySpeedDoubleButton.addEventListener("click", () => setReplaySpeed(2));
+backToTopButton.addEventListener("click", () => {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
 
 resetUiState();
+updateBackToTopVisibility();
