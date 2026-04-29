@@ -20,6 +20,7 @@ const replayContext = replayCanvas.getContext("2d");
 let replayData = null;
 let replayIndex = 0;
 let replayTimer = null;
+let replaySignature = null;
 
 function getBackendUrl() {
   return backendUrlInput.value.trim().replace(/\/+$/, "");
@@ -177,11 +178,35 @@ function startReplay() {
   if (!replayData || !replayData.frames || replayData.frames.length === 0) {
     return;
   }
+
+  if (replayIndex >= replayData.frames.length - 1) {
+    replayIndex = 0;
+    drawReplayFrame();
+  }
+
   stopReplay();
   replayTimer = setInterval(() => {
-    replayIndex = (replayIndex + 1) % replayData.frames.length;
+    if (replayIndex >= replayData.frames.length - 1) {
+      stopReplay();
+      drawReplayFrame();
+      return;
+    }
+    replayIndex += 1;
     drawReplayFrame();
   }, 160);
+}
+
+function getReplaySignature(trace) {
+  if (!trace || !trace.frames || trace.frames.length === 0) {
+    return null;
+  }
+
+  const lastFrame = trace.frames[trace.frames.length - 1];
+  return [
+    trace.meta?.frame_count ?? trace.frames.length,
+    lastFrame?.step ?? trace.frames.length,
+    trace.config?.vehicle_count ?? "na",
+  ].join(":");
 }
 
 async function refreshHealth() {
@@ -225,14 +250,27 @@ async function refreshRows() {
   }
 }
 
-async function refreshTrace() {
+async function refreshTrace({ autoplay = false } = {}) {
   try {
-    replayData = await fetchJson("/runs/latest/trace");
-    replayIndex = 0;
+    const trace = await fetchJson("/runs/latest/trace");
+    const nextSignature = getReplaySignature(trace);
+    const isNewTrace = nextSignature !== replaySignature;
+
+    replayData = trace;
+    replaySignature = nextSignature;
+
+    if (isNewTrace) {
+      replayIndex = 0;
+    }
+
     drawReplayFrame();
-    startReplay();
+
+    if (autoplay && isNewTrace) {
+      startReplay();
+    }
   } catch (error) {
     replayData = null;
+    replaySignature = null;
     stopReplay();
     drawReplayFrame();
     setMessage(`Could not load replay trace: ${error.message}`, "error");
