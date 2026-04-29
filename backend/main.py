@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -161,6 +162,23 @@ def get_latest_alerts() -> dict[str, object]:
     return {
         "alert_file": str(alert_file),
         "size_bytes": alert_file.stat().st_size,
+    }
+
+
+@app.get("/runs/latest/alerts/rows")
+def get_latest_alert_rows(limit: int = 50) -> dict[str, object]:
+    alert_file = Path(str(latest_run["alert_file"]))
+    if not alert_file.exists():
+        raise HTTPException(status_code=404, detail="No alerts.csv file found yet.")
+
+    safe_limit = max(1, min(limit, 200))
+    with alert_file.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    return {
+        "alert_file": str(alert_file),
+        "total_rows": len(rows),
+        "rows": rows[-safe_limit:],
     }
 
 

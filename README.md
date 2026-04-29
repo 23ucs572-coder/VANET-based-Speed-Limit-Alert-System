@@ -50,6 +50,10 @@ README.md
 backend/
   main.py
   requirements.txt
+web/
+  index.html
+  styles.css
+  app.js
 ```
 
 ## Prerequisites
@@ -276,10 +280,31 @@ If you prefer Railway:
 
 ### Netlify
 
-Netlify is best used for the future frontend, not for the SUMO backend itself.
+Netlify is used for the browser frontend in the [web](D:\Vansec\web) folder.
 
-Right now, this repo does not yet contain a browser frontend, so there is nothing meaningful to deploy to Netlify yet.
-The present public link should come from Render or Railway first.
+This repo now includes:
+
+- [web/index.html](D:\Vansec\web\index.html)
+- [web/styles.css](D:\Vansec\web\styles.css)
+- [web/app.js](D:\Vansec\web\app.js)
+- [netlify.toml](D:\Vansec\netlify.toml)
+
+To deploy it:
+
+1. Create an account on [Netlify](https://www.netlify.com/)
+2. Choose `Add new site` -> `Import an existing project`
+3. Connect GitHub
+4. Pick your repo
+5. Netlify should detect [netlify.toml](D:\Vansec\netlify.toml)
+6. Deploy the site
+
+The frontend is already configured to talk to:
+
+```text
+https://vanet-sumo-backend.onrender.com
+```
+
+So after deploy, users can open the Netlify link, change parameters, run a simulation, and view the latest alert rows through the browser.
 
 ## Suggested Full-Project Roadmap
 
