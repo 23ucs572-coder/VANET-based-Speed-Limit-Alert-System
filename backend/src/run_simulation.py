@@ -720,6 +720,12 @@ def run_simulation(config: SimulationConfig, run_id: str | None = None) -> None:
     TRACE_FILE.unlink(missing_ok=True)
     TRACE_TMP_FILE.unlink(missing_ok=True)
 
+    # Close any leftover TraCI connection from a previous crashed run
+    try:
+        traci.close()
+    except Exception:
+        pass
+
     route_file = build_route_file(config)
     rsus = get_rsus(config)
     sumo_cmd = build_sumo_command(config, route_file)
